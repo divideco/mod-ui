@@ -4520,6 +4520,7 @@ const PedalboardInfo_Mini* const* get_all_pedalboards(const int ptype)
     if (ptype == kPedalboardInfoFactoryOnly && FACTORYINFO != nullptr)
         return FACTORYINFO;
 
+
     char* const oldlv2path = getenv_strdup_or_null("LV2_PATH");
 
     const char* pedalboard_lv2_path;
@@ -4543,6 +4544,11 @@ const PedalboardInfo_Mini* const* get_all_pedalboards(const int ptype)
     }
 
     setenv("LV2_PATH", pedalboard_lv2_path, 1);
+
+    // Custom path for pedalboards
+    const char* const pedalboards_dir = getenv("LV2_PEDALBOARDS_DIR");
+    const char* const oldlv2path = getenv("LV2_PATH");
+    setenv("LV2_PATH", pedalboards_dir ? pedalboards_dir : "~/.pedalboards/", 1);
 
     LilvWorld* const w = lilv_world_new();
     lilv_world_load_all(w);
@@ -4612,8 +4618,13 @@ const char* const* get_broken_pedalboards(void)
 {
     return nullptr;
     // Custom path for pedalboards
+
     char* const oldlv2path = getenv_strdup_or_null("LV2_PATH");
     setenv("LV2_PATH", _get_lv2_pedalboards_path(), 1);
+
+    const char* const pedalboards_dir = getenv("LV2_PEDALBOARDS_DIR");
+    const char* const oldlv2path = getenv("LV2_PATH");
+    setenv("LV2_PATH", pedalboards_dir ? pedalboards_dir : "~/.pedalboards/", 1);
 
     LilvWorld* const w = lilv_world_new();
     lilv_world_load_all(w);

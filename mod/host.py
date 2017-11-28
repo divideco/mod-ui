@@ -3932,11 +3932,15 @@ class Host(object):
             newTitle = title = get_unique_name(title, get_all_user_pedalboard_names()) or title
             titlesym = symbolify(title)[:16]
 
+
             # Special handling for saving factory pedalboards
             if self.pedalboard_path and self.pedalboard_path.startswith(LV2_FACTORY_PEDALBOARDS_DIR) and not asNew:
                 trypath = os.path.join(LV2_PEDALBOARDS_DIR, os.path.basename(self.pedalboard_path))
             else:
                 trypath = os.path.join(LV2_PEDALBOARDS_DIR, "%s.pedalboard" % titlesym)
+
+            lv2path = LV2_PEDALBOARDS_DIR
+            trypath = os.path.join(lv2path, "%s.pedalboard" % titlesym)
 
             # if trypath already exists, generate a random bundlepath based on title
             if os.path.exists(trypath):
