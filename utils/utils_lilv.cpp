@@ -16,6 +16,7 @@
  */
 
 #include "utils.h"
+#include "patchstorage.h"
 
 #include <libgen.h>
 #include <limits.h>
@@ -130,6 +131,16 @@ static size_t HOMElen = strlen(HOME);
 // configuration
 static const bool kAllowRegularCV = getenv("MOD_UI_ALLOW_REGULAR_CV") != nullptr;
 
+
+#define PluginInfo_Mini_Init {                   \
+    false,                                       \
+    nullptr, nullptr, nullptr, nullptr, nullptr, \
+    nullptr, nullptr, 0, 0, 0, 0, 0,             \
+    { nullptr, nullptr, nullptr },               \
+    { nullptr, nullptr },                        \
+    false                                        \
+}
+
 #define PluginInfo_Init {                            \
     false,                                           \
     nullptr, nullptr,                                \
@@ -152,7 +163,8 @@ static const bool kAllowRegularCV = getenv("MOD_UI_ALLOW_REGULAR_CV") != nullptr
         { nullptr, nullptr }                         \
     },                                               \
     nullptr,                                         \
-    nullptr                                          \
+    nullptr,                                         \
+    { nullptr, nullptr }                             \
 }
 
 // Blacklisted plugins, which don't work properly on MOD for various reasons
@@ -1787,6 +1799,9 @@ const PluginInfo_Mini* _get_plugin_info_mini(LilvWorld* const w,
         info->gui.thumbnail  = nc;
     }
 
+    const char* const bundleuri = lilv_node_as_uri(lilv_plugin_get_bundle_uri(p));
+    patchstorage_read_info(&info.psInfo, bundleuri);
+
     // --------------------------------------------------------------------------------------------------------
 
     return info;
@@ -3034,6 +3049,8 @@ const PluginInfo& _get_plugin_info(LilvWorld* const w,
 
     // --------------------------------------------------------------------------------------------------------
 
+    patchstorage_read_info(&info.psInfo, bundleuri);
+
     lilv_free((void*)bundle);
 
     info.valid = true;
@@ -3566,8 +3583,41 @@ static void _clear_plugin_info(PluginInfo& info)
         delete[] info.presets;
     }
 
+    patchstorage_free_info(&info.psInfo);
+
     memset(&info, 0, sizeof(PluginInfo));
 }
+
+
+static void _clear_plugin_info_mini(PluginInfo_Mini& info)
+{
+    if (info.needsDealloc)
+    {
+        if (info.brand != nc)
+            free((void*)info.brand);
+        if (info.label != nc)
+            free((void*)info.label);
+        if (info.name != nc)
+            free((void*)info.name);
+        if (info.comment != nc)
+            free((void*)info.comment);
+        if (info.buildEnvironment != nc &&
+            info.buildEnvironment != kBuildEnvironmentProd &&
+            info.buildEnvironment != kBuildEnvironmentDev &&
+            info.buildEnvironment != kBuildEnvironmentLabs)
+            free((void*)info.buildEnvironment);
+        if (info.gui.resourcesDirectory != nc)
+            free((void*)info.gui.resourcesDirectory);
+        if (info.gui.screenshot != nc)
+            free((void*)info.gui.screenshot);
+        if (info.gui.thumbnail != nc)
+            free((void*)info.gui.thumbnail);
+        patchstorage_free_info(&info.psInfo);
+    }
+
+    memset(&info, 0, sizeof(PluginInfo_Mini));
+}
+
 
 static void _clear_pedalboard_info(PedalboardInfo& info)
 {
@@ -3745,6 +3795,51 @@ static const PluginInfo* _fill_plugin_info_with_presets(LilvWorld* const w, Plug
 
 // --------------------------------------------------------------------------------------------------------
 
+<<<<<<< HEAD
+=======
+static void _fill_plugin_info_mini_from_full(const PluginInfo& info2, PluginInfo_Mini* const miniInfo)
+{
+    if (miniInfo->valid)
+    {
+        if (miniInfo->needsDealloc)
+            _clear_plugin_info_mini(*miniInfo);
+        else
+            return;
+    }
+
+    static PluginInfo_Mini info;
+    memset(&info, 0, sizeof(PluginInfo_Mini));
+
+    if (info2.valid)
+    {
+        info.uri              = info2.uri;
+        info.name             = info2.name;
+        info.brand            = info2.brand;
+        info.label            = info2.label;
+        info.comment          = info2.comment;
+        info.buildEnvironment = info2.buildEnvironment;
+        info.category         = info2.category;
+        info.microVersion     = info2.microVersion;
+        info.minorVersion     = info2.minorVersion;
+        info.release          = info2.release;
+        info.builder          = info2.builder;
+        info.licensed         = info2.licensed;
+
+        info.gui.resourcesDirectory = info2.gui.resourcesDirectory;
+        info.gui.screenshot = info2.gui.screenshot;
+        info.gui.thumbnail  = info2.gui.thumbnail;
+
+        memcpy(&info.psInfo, &info2.psInfo, sizeof(info.psInfo));
+
+        info.valid = true;
+    }
+
+    *miniInfo = info;
+}
+
+// --------------------------------------------------------------------------------------------------------
+
+>>>>>>> 3d0ba355 (Provide Patchstorage ID and Version for lv2 plugins.)
 void init(void)
 {
     lilv_world_free(W);
