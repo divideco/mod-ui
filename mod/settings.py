@@ -62,9 +62,13 @@ os.environ['MOD_KEYS_PATH'] = KEYS_PATH
 DOWNLOAD_TMP_DIR = os.environ.get('MOD_DOWNLOAD_TMP_DIR', '/tmp/mod-ui')
 PEDALBOARD_TMP_DIR = os.environ.get('MOD_PEDALBOARD_TMP_DIR', join(DATA_DIR, 'pedalboard-tmp-data'))
 
+
 LV2_PLUGIN_DIR = os.path.expanduser("~/.lv2/")
 LV2_PEDALBOARDS_DIR = os.environ.get('MOD_USER_PEDALBOARDS_DIR', os.path.expanduser("~/.pedalboards/"))
 LV2_FACTORY_PEDALBOARDS_DIR = os.environ.get('MOD_FACTORY_PEDALBOARDS_DIR', "/usr/share/mod/pedalboards/")
+
+LV2_PLUGIN_DIR = os.environ.get('LV2_PLUGIN_DIR', os.path.expanduser("~/.lv2/"))
+LV2_PEDALBOARDS_DIR = os.environ.get('LV2_PEDALBOARDS_DIR', os.path.expanduser("~/.pedalboards/"))
 
 HMI_BAUD_RATE = os.environ.get('MOD_HMI_BAUD_RATE', 10000000)
 HMI_SERIAL_PORT = os.environ.get('MOD_HMI_SERIAL_PORT', "/dev/ttyUSB0")
@@ -126,4 +130,6 @@ UPDATE_MOD_OS_HERLPER_FILE='/data/boot-restore'
 UPDATE_CC_FIRMWARE_FILE='/tmp/cc-firmware.bin'
 USING_256_FRAMES_FILE='/data/using-256-frames'
 
+# BLOKAS
 PATCHSTORAGE_ENABLED=bool(int(os.environ.get('PATCHSTORAGE_ENABLED', True)))
+UNMODIFY=bool(int(os.environ.get('UNMODIFY', True)))
