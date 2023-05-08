@@ -16,6 +16,7 @@
  */
 
 #include "utils.h"
+#include "patchstorage.h"
 
 #include <libgen.h>
 #include <limits.h>
@@ -137,7 +138,7 @@ static const bool kAllowRegularCV = getenv("MOD_UI_ALLOW_REGULAR_CV") != nullptr
     nullptr, nullptr, 0, 0, 0, 0, 0, 0, false,       \
     nullptr, nullptr,                                \
     { nullptr, nullptr, nullptr },                   \
-    nullptr,                                         \
+    { nullptr },                                         \
     {                                                \
         nullptr, nullptr, nullptr, nullptr, nullptr, \
         nullptr, nullptr, nullptr, nullptr,          \
@@ -152,7 +153,8 @@ static const bool kAllowRegularCV = getenv("MOD_UI_ALLOW_REGULAR_CV") != nullptr
         { nullptr, nullptr }                         \
     },                                               \
     nullptr,                                         \
-    nullptr                                          \
+    nullptr,                                         \
+    { nullptr }                                      \
 }
 
 // Blacklisted plugins, which don't work properly on MOD for various reasons
@@ -1787,6 +1789,9 @@ const PluginInfo_Mini* _get_plugin_info_mini(LilvWorld* const w,
         info->gui.thumbnail  = nc;
     }
 
+    const char* const bundleuri = lilv_node_as_uri(lilv_plugin_get_bundle_uri(p));
+    patchstorage_read_info(&info->psInfo, bundleuri);
+
     // --------------------------------------------------------------------------------------------------------
 
     return info;
@@ -3034,6 +3039,8 @@ const PluginInfo& _get_plugin_info(LilvWorld* const w,
 
     // --------------------------------------------------------------------------------------------------------
 
+    patchstorage_read_info(&info.psInfo, bundleuri);
+
     lilv_free((void*)bundle);
 
     info.valid = true;
@@ -3093,9 +3100,12 @@ static void _fill_plugin_info_mini_from_full(const PluginInfo& info2, const Plug
     info->builder          = info2.builder;
     info->licensed         = info2.licensed;
 
+    memcpy(&info->psInfo, &info2.psInfo, sizeof(info->psInfo));
+
     info->gui.resourcesDirectory = info2.gui.resourcesDirectory != nc ? strdup(info2.gui.resourcesDirectory) : nc;
     info->gui.screenshot         = info2.gui.screenshot         != nc ? strdup(info2.gui.screenshot)         : nc;
     info->gui.thumbnail          = info2.gui.thumbnail          != nc ? strdup(info2.gui.thumbnail)          : nc;
+
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -3565,6 +3575,8 @@ static void _clear_plugin_info(PluginInfo& info)
         }
         delete[] info.presets;
     }
+
+    patchstorage_free_info(&info.psInfo);
 
     memset(&info, 0, sizeof(PluginInfo));
 }
@@ -4612,8 +4624,10 @@ const char* const* get_broken_pedalboards(void)
 {
     return nullptr;
     // Custom path for pedalboards
+    const char* const pedalboards_dir = getenv("LV2_PEDALBOARDS_DIR");
     char* const oldlv2path = getenv_strdup_or_null("LV2_PATH");
     setenv("LV2_PATH", _get_lv2_pedalboards_path(), 1);
+    setenv("LV2_PATH", pedalboards_dir ? pedalboards_dir : "~/.pedalboards/", 1);
 
     LilvWorld* const w = lilv_world_new();
     lilv_world_load_all(w);

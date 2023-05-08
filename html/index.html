@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html class="{% if blokas_enabled %}blokas{% end %}">
 
 <!-- HEAD -->
 <head>
 <meta charset="UTF-8">
-<title>MOD</title>
+<title>{% if blokas_enabled %}Pedalboard{% else %}MOD{% end %}</title>
 
+{% if blokas_enabled %}
+<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+{% else %}
 <link rel="apple-touch-icon" sizes="57x57" href="img/favicon/apple-icon-57x57.png">
 <link rel="apple-touch-icon" sizes="60x60" href="img/favicon/apple-icon-60x60.png">
 <link rel="apple-touch-icon" sizes="72x72" href="img/favicon/apple-icon-72x72.png">
@@ -20,8 +23,9 @@
 <link rel="icon" type="image/png" sizes="96x96" href="img/favicon/favicon-96x96.png">
 <link rel="icon" type="image/png" sizes="16x16" href="img/favicon/favicon-16x16.png">
 <link rel="manifest" href="img/favicon/manifest.json">
-<meta name="msapplication-TileColor" content="#111111">
 <meta name="msapplication-TileImage" content="img/favicon/ms-icon-144x144.png">
+{% end %}
+<meta name="msapplication-TileColor" content="#111111">
 <meta name="theme-color" content="#111111">
 
 <link rel="stylesheet" type="text/css" href="css/fontello/css/fontello.css?v={{version}}"/>
@@ -54,6 +58,8 @@
 <script type="text/javascript" src="js/lib/jquery.textareaAutoResize.js?v={{version}}"></script>
 <script type="text/javascript" src="js/lib/arrive.min.js?v={{version}}"></script>
 <script type="text/javascript" src="js/lib/lunr.min.js?v={{version}}"></script>
+{% if not blokas_enabled %}
+{% end %}
 <script type="text/javascript" src="js/lib/slick/slick.min.js?v={{version}}"></script>
 
 <script type="text/javascript">
@@ -61,6 +67,11 @@
     var TEMPLATES = {}
     SITEURL = '{{cloud_url}}'
     CLOUD_LABS_URL = '{{cloud_labs_url}}'
+    PATCHSTORAGE_ENABLED = '{{patchstorage_enabled}}'
+    PATCHSTORAGE_API_URL = '{{patchstorage_api_url}}'
+    PATCHSTORAGE_PLATFORM_ID = '{{patchstorage_platform_id}}'
+    PATCHSTORAGE_TARGET_ID = '{{patchstorage_target_id}}'
+    BLOKAS_ENABLED = '{{blokas_enabled}}'
     PLUGINS_URL      = '{{plugins_url}}'
     PEDALBOARDS_URL  = '{{pedalboards_url}}'
     PEDALBOARDS_LABS_URL  = '{{pedalboards_labs_url}}'
@@ -127,6 +138,8 @@ $('document').ready(function() {
         pedalboardTrigger: $('#main-menu #mod-plugins'),
         cloudPluginBox: $('#cloud-plugins-library'),
         cloudPluginBoxTrigger: $('#mod-cloud-plugins'),
+        patchstorageBox: $('#patchstorage-library'),
+        patchstorageBoxTrigger: $('#patchstorage'),
         pedalboardBox: $('#pedalboards-library'),
         pedalboardBoxTrigger: $('#main-menu #mod-pedalboard'),
         bankBox: $('#bank-library'),
@@ -179,10 +192,8 @@ $('document').ready(function() {
     } else {
         desktop.upgradeWindow.upgradeWindow('setErrored')
 
-        // hide stuff that is only relevant to MOD Devices
         $('#mod-bypassLeft').hide()
         $('#mod-bypassRight').hide()
-        $('#mod-cloud-plugins').hide()
         $('#mod-update').hide()
         $('#pedalboard-info').find('.js-cloud').hide()
 
@@ -191,7 +202,101 @@ $('document').ready(function() {
         $('#mod-status').show().statusTooltip('updatePosition')
     }
 
+    if ({{blokas_enabled}}) {
+
+        function do_blokas_update(silent = false) {
+            $.ajax({
+                type: 'GET',
+                url: '/apt/check',
+                success: function (resp) {
+                    if (!resp.current) {
+                        if (!silent) { alert('Oops, something went wrong! 😔') }
+                        return false
+                    }
+                    
+                    if (!resp.latest) {
+                        if (!silent) { alert('Failed to get the latest available version! 😔\nMake sure your device is connected to the internet. 🌐') }
+                        return false
+                    }
+
+                    if (resp.latest == resp.current) {
+                        if (!silent) { alert(`Congrats! You have the latest version: ${resp.latest} 👍`) }
+                        return false
+                    }
+
+                    if (silent) {
+                        $('#blokas-update').statusTooltip('message', 'Update Available', true)
+                        $('#blokas-update').mouseover();
+                        setTimeout(function () {
+                            $('#blokas-update').mouseleave();
+                        }, 10000)
+                        return true
+                    }
+
+                    if (!confirm(`New version is available! 🤯 \nLatest version: ${resp.latest} \nCurrent version: ${resp.current} \nUpdate can take up to 10 minutes. \nContinue? 👌`))
+                        return
+                    
+                    $.ajax({
+                        type: 'GET',
+                        url: '/apt/upgrade',
+                        success: function (resp) {
+                            if (resp.error) {
+                                alert('Oops, something went wrong! 😔')
+                                location.reload()
+                                return
+                            }
+                            location.reload()
+                        },
+                        error: function (xhr, status, error) {
+                            console.log(error)
+                            alert('Oops, something went wrong! 😔')
+                            location.reload()
+                        },
+                        cache: false,
+                        dataType: 'json',
+                        timeout: 1000 * 300
+                    })
+
+                    desktop.blockUI(true)
+                },
+                error: function (xhr, status, error) {
+                    console.log(error)
+                    alert('Oops, something went wrong! 😔')
+                },
+                cache: false,
+                dataType: 'json'
+            })
+        }
+
+        $('#mod-devices').hide()
+        $('#mod-online-pedalboards').hide()
+        $('#mod-cloud-plugins').hide()
+        $('#mod-settings').hide()
+        $('#mod-status').hide()
+        $('#mod-update').hide()
+        $('#blokas-update').show()
+        $('#blokas-update').statusTooltip()
+        $('#blokas-update').statusTooltip('message', 'Check for Updates', true)
+        $('#blokas-update').click(function () {
+            do_blokas_update()
+        })
+        do_blokas_update(true)
+
+        // disable all calls to domain moddevices.com
+        $(document).ajaxSend(function (event, xhr, options) {
+            if (options.url && !options.url.startsWith('/') && xhr.abort) {
+                var domain = (new URL(options.url)).hostname
+                if (domain.includes('moddevices.com')) xhr.abort()
+            }
+        })
+    }
+
+    if (!{{patchstorage_enabled}}) {
+        $('#patchstorage').hide()
+    }
+
     if (PREFERENCES['dev-mode'] == "on") {
+        console.log('DEV Mode Enabled')
         enable_dev_mode(true)
     }
     if (PREFERENCES['plugins-folded'] == "true") {
@@ -268,6 +373,7 @@ $('document').ready(function() {
 <script type="text/javascript" src="js/banks.js?v={{version}}"></script>
 <script type="text/javascript" src="js/effects.js?v={{version}}"></script>
 <script type="text/javascript" src="js/cloudplugin.js?v={{version}}"></script>
+<script type="text/javascript" src="js/patchstorage.js?v={{version}}"></script>
 <script type="text/javascript" src="js/mididevices.js?v={{version}}"></script>
 <script type="text/javascript" src="js/snapshot.js?v={{version}}"></script>
 <script type="text/javascript" src="js/hardware.js?v={{version}}"></script>
@@ -625,8 +731,10 @@ $('document').ready(function() {
         <div id="mod-bank" class="icon" data-message="Banks"></div>
         <div id="mod-file-manager" class="icon" data-message="File Manager"></div>
         <div id="mod-cloud-plugins" class="icon" data-message="Plugin Store"></div>
+        <div id="patchstorage" class="icon" data-message="Patchstorage"></div>
         <div id="banks-saving">Auto saving banks...</div>
         <div id="mod-update" class="status icon"></div>
+        <div id="blokas-update" class="status icon mod-hidden"></div>
         <div id="mod-status" class="status icon mod-hidden"></div>
         <div id="mod-devices" class="status icon"></div>
         <div id="mod-settings" class="status icon mod-settings" data-message="Go to settings screen"></div>
@@ -805,6 +913,81 @@ $('document').ready(function() {
     </div>
     <!-- END CLOUD PLUGINS LIBRARY -->
 
+    <!-- PATCHSTORAGE -->
+    <div id="patchstorage-library" class="mod-hidden mod-init-hidden">
+        <div>
+            <header>
+                <h1 class="bottom top">PATCHSTORAGE (Beta)</h1>
+                <button class="status icon mod-bypass" id="patchstorage_update_all">Refresh</button>
+            </header>
+
+            <div class="filter clearfix">
+                <h2>Filter</h2>
+                <div class="control-group">
+                    <input type="checkbox" name="non-installed" id="patchstorage-non-installed"/>
+                    <label for="patchstorage-non-installed">NOT INSTALLED</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" name="installed" id="patchstorage-installed"/>
+                    <label for="patchstorage-installed">INSTALLED</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" name="outdated" id="patchstorage-outdated"/>
+                    <label for="patchstorage-outdated">OUTDATED</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" name="other" id="patchstorage-other" />
+                    <label for="patchstorage-other">LOCAL PLUGINS</label>
+                </div>
+                <div class="">
+                    <input class="form-control" placeholder="Filter by keyword" type="search" autocomplete="off" />
+                </div>
+                <ul class="categories list list-unstyled" style="margin-bottom: 0px;">
+                    <li id="patchstorage-tab-All">All</li>
+                    <li id="patchstorage-tab-ControlVoltage">Control&nbsp;Voltage</li>
+                    <li id="patchstorage-tab-Delay">Delay</li>
+                    <li id="patchstorage-tab-Distortion">Distortion</li>
+                    <li id="patchstorage-tab-Dynamics">Dynamics</li>
+                    <li id="patchstorage-tab-Filter">Filter</li>
+                    <li id="patchstorage-tab-Generator">Generator</li>
+                    <li id="patchstorage-tab-MIDI">MIDI Utility</li>
+                    <li id="patchstorage-tab-Modulator">Modulator</li>
+                    <li id="patchstorage-tab-Reverb">Reverb</li>
+                    <li id="patchstorage-tab-Simulator">Simulator</li>
+                    <li id="patchstorage-tab-Spatial">Spatial</li>
+                    <li id="patchstorage-tab-Spectral">Spectral</li>
+                    <li id="patchstorage-tab-Utility">Utility</li>
+                    <!-- <li id="patchstorage-tab-MaxGen">Max&nbsp;gen~</li> -->
+                    <!-- <li id="patchstorage-tab-Camomile">Camomile</li> -->
+                </ul>
+            </div>
+
+            <div class="patchstorage-plugins clearfix js-patchstorage">
+              <div id="patchstorage-results-wrapper">
+					<h2>Filtered results</h2>
+                    <div id="patch-content-All" class="plugins-wrapper"></div>
+                    <div id="patch-content-ControlVoltage" class="plugins-wrapper"></div>
+                    <div id="patch-content-Delay" class="plugins-wrapper"></div>
+                    <div id="patch-content-Distortion" class="plugins-wrapper"></div>
+                    <div id="patch-content-Dynamics" class="plugins-wrapper"></div>
+                    <div id="patch-content-Filter" class="plugins-wrapper"></div>
+                    <div id="patch-content-Generator" class="plugins-wrapper"></div>
+                    <div id="patch-content-MIDI" class="plugins-wrapper"></div>
+                    <div id="patch-content-Modulator" class="plugins-wrapper"></div>
+                    <div id="patch-content-Reverb" class="plugins-wrapper"></div>
+                    <div id="patch-content-Simulator" class="plugins-wrapper"></div>
+                    <div id="patch-content-Spatial" class="plugins-wrapper"></div>
+                    <div id="patch-content-Spectral" class="plugins-wrapper"></div>
+                    <div id="patch-content-Utility" class="plugins-wrapper"></div>
+                    <!-- <div id="cloud-plugin-content-MaxGen" class="plugins-wrapper"></div> -->
+                    <!-- <div id="cloud-plugin-content-Camomile" class="plugins-wrapper"></div> -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <!-- END PATCHSTORAGE -->
+
     <!-- PEDALBOARDS LIBRARY -->
     <div id="pedalboards-library" class="mod-hidden mod-init-hidden">
         <div class="box clearfix">
@@ -815,7 +998,7 @@ $('document').ready(function() {
                 <div class="form-group">
                     <input id="searchPedalboard" class="form-control" maxlength="20" placeholder="Filter by keyword(s)" type="search" autocomplete="off" />
                 </div>
-                <a style="display:inline-block;float:right;color:#AAA;font-size:1.1em;margin-right:30px;"
+                <a id="mod-online-pedalboards" style="display:inline-block;float:right;color:#AAA;font-size:1.1em;margin-right:30px;"
                    href="http://pedalboards.moddevices.com/" target="_blank">
                     <img style="width: 1.2em; height: 1.2em; opacity: 0.6; vertical-align: middle;" src="img/icons/25/language.png" alt=""/>
                     <span style="vertical-align: middle;">Browse Online Pedalboards</span>
