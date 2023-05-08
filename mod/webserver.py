@@ -23,6 +23,12 @@ import shutil
 import subprocess
 import sys
 import time
+import tarfile
+
+try:
+    sys.modules['tornado'] = __import__('tornado4')
+except ModuleNotFoundError:
+    pass
 
 from base64 import b64decode, b64encode
 from datetime import timedelta
@@ -34,6 +40,7 @@ from tornado.ioloop import IOLoop
 from tornado.template import Loader
 from tornado.util import unicode_type
 from uuid import uuid4
+import urllib.request
 
 from mod.profile import Profile
 from mod.settings import (APP, LOG, DEV_API,
@@ -46,7 +53,9 @@ from mod.settings import (APP, LOG, DEV_API,
                           DEFAULT_ICON_TEMPLATE, DEFAULT_SETTINGS_TEMPLATE, DEFAULT_ICON_IMAGE,
                           DEFAULT_PEDALBOARD, DEFAULT_SNAPSHOT_NAME, DATA_DIR, KEYS_PATH, USER_FILES_DIR,
                           FAVORITES_JSON_FILE, PREFERENCES_JSON_FILE, USER_ID_JSON_FILE,
-                          DEV_HOST, UNTITLED_PEDALBOARD_NAME, MODEL_CPU, MODEL_TYPE, PEDALBOARDS_LABS_HTTP_ADDRESS)
+                          DEV_HOST, UNTITLED_PEDALBOARD_NAME, MODEL_CPU, MODEL_TYPE, PEDALBOARDS_LABS_HTTP_ADDRESS,
+                          PATCHSTORAGE_ENABLED, PATCHSTORAGE_API_URL, PATCHSTORAGE_PLATFORM_ID, PATCHSTORAGE_TARGET_ID, BLOKAS_ENABLED,
+                          BLOKAS_APT_PACKAGE, BLOKAS_UPDATE_CHECK_URL)
 
 from mod import (
     TextFileFlusher,
@@ -81,15 +90,19 @@ gState = GlobalWebServerState()
 gState.favorites = []
 
 @gen.coroutine
-def install_bundles_in_tmp_dir(callback):
+def install_bundles_in_tmp_dir(options, callback):
     error     = ""
     removed   = []
     installed = []
+    bundles   = []
     pluginsWereRemoved = False
+    patchstorage_id = None
 
     for bundle in os.listdir(DOWNLOAD_TMP_DIR):
         tmppath    = os.path.join(DOWNLOAD_TMP_DIR, bundle)
         bundlepath = os.path.join(LV2_PLUGIN_DIR, bundle)
+
+        bundles.append(bundle)
 
         if os.path.exists(bundlepath):
             resp, data = yield gen.Task(SESSION.host.remove_bundle, bundlepath, True, None)
@@ -137,13 +150,16 @@ def install_bundles_in_tmp_dir(callback):
             list_banks(broken)
 
     if error or len(installed) == 0:
+        msg = error or "No plugins found in bundle"
+
         # Delete old temp files
         for bundle in os.listdir(DOWNLOAD_TMP_DIR):
+            logging.warning(f'bundle: {bundle}, msg: {msg}')
             shutil.rmtree(os.path.join(DOWNLOAD_TMP_DIR, bundle))
 
         resp = {
             'ok'       : False,
-            'error'    : error or "No plugins found in bundle",
+            'error'    : msg,
             'removed'  : removed,
             'installed': [],
         }
@@ -152,6 +168,7 @@ def install_bundles_in_tmp_dir(callback):
             'ok'       : True,
             'removed'  : removed,
             'installed': installed,
+            'bundles'  : bundles
         }
 
     os.sync()
@@ -171,7 +188,8 @@ def run_command(args, cwd, callback):
 
     ioloop.add_handler(proc.stdout.fileno(), end_fileno, 16)
 
-def install_package(filename, callback):
+def install_package(filename, options, callback):
+    
     if not os.path.exists(filename):
         callback({
             'ok'       : False,
@@ -182,9 +200,29 @@ def install_package(filename, callback):
         return
 
     def end_untar_pkgs(resp):
-        os.remove(filename)
-        install_bundles_in_tmp_dir(callback)
+        bundlenames = []
+        psid = options.get("psid")
 
+        if psid is not None:
+            psversion = options.get("psversion", "0.0")
+            config = {"id": int(psid), "revision": str(psversion)}
+
+            try:
+                with tarfile.open(filename) as f:
+                    bundlenames = f.getnames()
+            except tarfile.ReadError as e:
+                logging.warning(f'tar file read error: {str(e)}')
+
+            for name in bundlenames:
+                if not any(s in name for s in ["/", "\\"]) and os.path.isdir(os.path.join(DOWNLOAD_TMP_DIR, name)):
+                    json_path = os.path.join(DOWNLOAD_TMP_DIR, name, "patchstorage.json")
+                    with open(json_path, 'w', encoding='utf-8') as file:
+                        json.dump(config, file, ensure_ascii=False, indent=4)
+
+        os.remove(filename)
+        install_bundles_in_tmp_dir(options, callback)
+    
+    logging.info(f'Installing: {filename}')
     run_command(['tar','zxf', filename], DOWNLOAD_TMP_DIR, end_untar_pkgs)
 
 @gen.coroutine
@@ -318,13 +356,13 @@ class SimpleFileReceiver(JsonRequestHandler):
             os.mkdir(self.destination_dir)
         with open(os.path.join(self.destination_dir, basename), 'wb') as fh:
             fh.write(self.request.body)
-        yield gen.Task(self.process_file, basename)
+        yield gen.Task(self.process_file, basename, self.request.headers)
         self.write({
             'ok'    : True,
             'result': self.result
         })
 
-    def process_file(self, basename, callback=lambda:None):
+    def process_file(self, basename, headers, callback=lambda:None):
         """to be overriden"""
 
 @web.stream_request_body
@@ -705,6 +743,68 @@ class UpdateBegin(JsonRequestHandler):
         IOLoop.instance().add_callback(start_restore)
         self.write(True)
 
+class APTCheck(JsonRequestHandler):
+    def get(self):
+        current = None
+        latest = None
+
+        try:
+            out = subprocess.Popen(['dpkg', '-s', BLOKAS_APT_PACKAGE], stdout=subprocess.PIPE, encoding='utf8')
+            while True:
+                line = out.stdout.readline()
+                if not line:
+                    break
+                if 'Version:' in line:
+                    current = line.replace('Version: ', '').strip()
+                    break
+        
+        except Exception as err:
+            logging.error(err)
+
+        try:
+            data = json.loads(urllib.request.urlopen(BLOKAS_UPDATE_CHECK_URL).read())
+            latest = data.get('latest')
+
+        except Exception as err:
+            logging.error(err)        
+
+        self.write({
+            "current": current,
+            "latest": latest,
+        })
+
+class APTUpgrade(JsonRequestHandler):
+    def is_update_running():
+        proc = subprocess.Popen(['systemctl', 'is-active', 'modep-update.service'], stdout=subprocess.PIPE, encoding='utf8')
+        line = proc.stdout.readline().strip()
+        return line in ['active', 'activating']
+
+    def is_update_failed():
+        proc = subprocess.run(['systemctl', '-q', 'is-failed', 'modep-update.service'])
+        return proc.returncode == 0
+
+    def get(self):
+        error = False
+
+        try:
+            open('/tmp/modep-update', 'a').close()
+            time.sleep(3)
+            while APTUpgrade.is_update_running():
+                time.sleep(1)
+
+            error = APTUpgrade.is_update_failed()
+            logging.info(error)
+        
+        except Exception as err:
+            logging.error(err)
+            error = True
+
+        logging.info("Update complete, error: {0}".format(error))
+
+        self.write({
+            "error": error
+        })
+
 class ControlChainDownload(SimpleFileReceiver):
     destination_dir = "/tmp/cc-update"
 
@@ -734,12 +834,23 @@ class EffectInstaller(SimpleFileReceiver):
 
     @web.asynchronous
     @gen.engine
-    def process_file(self, basename, callback=lambda:None):
+    def process_file(self, basename, headers, callback=lambda:None):
+        options = {}
+
+        # TODO: remove this, once a better solution is found
+        psids = self.request.headers.get_list("Patchstorage-Item")
+        if psids and len(psids) > 0:
+            options["psid"] = psids[0]
+
+        psvers = self.request.headers.get_list("Patchstorage-Item-Version")
+        if psvers and len(psvers) > 0:
+            options["psversion"] = psvers[0]
+
         def on_finish(resp):
             reset_get_all_pedalboards_cache(kPedalboardInfoBoth)
             self.result = resp
             callback()
-        install_package(os.path.join(DOWNLOAD_TMP_DIR, basename), on_finish)
+        install_package(os.path.join(DOWNLOAD_TMP_DIR, basename), options, on_finish)
 
 class EffectBulk(JsonRequestHandler):
     def prepare(self):
@@ -774,7 +885,8 @@ class SDKEffectInstaller(EffectInstaller):
         with open(filename, 'wb') as fh:
             fh.write(b64decode(upload['body']))
 
-        resp = yield gen.Task(install_package, filename)
+        # TODO: filename vs callback?
+        resp = yield gen.Task(install_package, {}, filename)
 
         if resp['ok']:
             SESSION.msg_callback("rescan " + b64encode(json.dumps(resp).encode("utf-8")).decode("utf-8"))
@@ -1279,6 +1391,11 @@ class PedalboardList(JsonRequestHandler):
             default_pb['broken'] = False
         self.write(allpedals)
 
+class PedalboardCurrent(JsonRequestHandler):
+    def get(self):
+        self.write(SESSION.host.pedalboard_path)
+        #self.write(get_all_pedalboards())
+
 class PedalboardSave(JsonRequestHandler):
     @web.asynchronous
     @gen.engine
@@ -1773,6 +1890,11 @@ class TemplateHandler(TimelessRequestHandler):
             'preferences': json.dumps(SESSION.prefs.prefs),
             'bufferSize': get_jack_buffer_size(),
             'sampleRate': get_jack_sample_rate(),
+            'patchstorage_enabled': 'true' if PATCHSTORAGE_ENABLED else 'false',
+            'patchstorage_api_url': PATCHSTORAGE_API_URL,
+            'patchstorage_platform_id': PATCHSTORAGE_PLATFORM_ID,
+            'patchstorage_target_id': PATCHSTORAGE_TARGET_ID,
+            'blokas_enabled': 'true' if BLOKAS_ENABLED else 'false'
         }
         return context
 
@@ -1824,6 +1946,7 @@ class TemplateHandler(TimelessRequestHandler):
             'preferences': json.dumps(prefs),
             'bufferSize': get_jack_buffer_size(),
             'sampleRate': get_jack_sample_rate(),
+            'blokas_enabled': 'true' if BLOKAS_ENABLED else 'false'
         }
         return context
 
@@ -2170,6 +2293,9 @@ class FilesList(JsonRequestHandler):
 
         elif filetype == "sfz":
             return ("SFZ Instruments", (".sfz",))
+        
+        elif filetype == "tapf":
+            return ("Amplifier Profiles", (".tapf",))
 
         elif filetype == "aidadspmodel":
             return ("Aida DSP Models", (".json",))
@@ -2224,6 +2350,9 @@ application = web.Application(
             (r"/update/download/", UpdateDownload),
             (r"/update/begin", UpdateBegin),
 
+            (r"/apt/check", APTCheck),
+            (r"/apt/upgrade", APTUpgrade),
+
             (r"/controlchain/download/", ControlChainDownload),
             (r"/controlchain/cancel/", ControlChainCancel),
 
@@ -2259,6 +2388,7 @@ application = web.Application(
 
             # pedalboard stuff
             (r"/pedalboard/list", PedalboardList),
+            (r"/pedalboard/current", PedalboardCurrent),
             (r"/pedalboard/save", PedalboardSave),
             (r"/pedalboard/pack_bundle/?", PedalboardPackBundle),
             (r"/pedalboard/load_bundle/", PedalboardLoadBundle),
