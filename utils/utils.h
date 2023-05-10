@@ -222,10 +222,7 @@ typedef struct {
     int licensed; // PluginLicenseType
     int iotype; // PluginIOType
     PluginGUI_Mini gui;
-
     patchstorage_info_t psInfo;
-    bool needsDealloc;
-
 } PluginInfo_Mini;
 
 typedef struct {

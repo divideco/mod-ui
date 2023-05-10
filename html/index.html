@@ -58,12 +58,8 @@
 <script type="text/javascript" src="js/lib/jquery.textareaAutoResize.js?v={{version}}"></script>
 <script type="text/javascript" src="js/lib/arrive.min.js?v={{version}}"></script>
 <script type="text/javascript" src="js/lib/lunr.min.js?v={{version}}"></script>
-
 {% if not blokas_enabled %}
-<script type="text/javascript" src="js/lib/buy-button-storefront.js?v={{version}}"></script>
-<script type="text/javascript" src="js/shopify.js?v={{version}}"></script>
 {% end %}
-
 <script type="text/javascript" src="js/lib/slick/slick.min.js?v={{version}}"></script>
 
 <script type="text/javascript">
@@ -74,6 +70,7 @@
     PATCHSTORAGE_ENABLED = '{{patchstorage_enabled}}'
     PATCHSTORAGE_API_URL = '{{patchstorage_api_url}}'
     PATCHSTORAGE_PLATFORM_ID = '{{patchstorage_platform_id}}'
+    PATCHSTORAGE_TARGET_ID = '{{patchstorage_target_id}}'
     BLOKAS_ENABLED = '{{blokas_enabled}}'
     PLUGINS_URL      = '{{plugins_url}}'
     PEDALBOARDS_URL  = '{{pedalboards_url}}'
@@ -206,33 +203,34 @@ $('document').ready(function() {
     }
 
     if ({{blokas_enabled}}) {
-        $('#mod-devices').hide()
-        $('#mod-online-pedalboards').hide()
-        $('#mod-cloud-plugins').hide()
-        $('#mod-settings').hide()
-        $('#mod-status').hide()
-        $('#mod-update').hide()
-        $('#blokas-update').show()
-        $('#blokas-update').statusTooltip()
-        $('#blokas-update').statusTooltip('message', 'Check for Updates', true)
-        $('#blokas-update').click(function () {
+
+        function do_blokas_update(silent = false) {
             $.ajax({
                 type: 'GET',
                 url: '/apt/check',
                 success: function (resp) {
                     if (!resp.current) {
-                        alert('Oops, something went wrong! 😔')
-                        return
+                        if (!silent) { alert('Oops, something went wrong! 😔') }
+                        return false
                     }
                     
                     if (!resp.latest) {
-                        alert('Failed to get the latest available version! 😔\nMake sure your device is connected to the internet. 🌐')
-                        return
+                        if (!silent) { alert('Failed to get the latest available version! 😔\nMake sure your device is connected to the internet. 🌐') }
+                        return false
                     }
 
                     if (resp.latest == resp.current) {
-                        alert(`Congrats! You have the latest version: ${resp.latest} 👍`)
-                        return
+                        if (!silent) { alert(`Congrats! You have the latest version: ${resp.latest} 👍`) }
+                        return false
+                    }
+
+                    if (silent) {
+                        $('#blokas-update').statusTooltip('message', 'Update Available', true)
+                        $('#blokas-update').mouseover();
+                        setTimeout(function () {
+                            $('#blokas-update').mouseleave();
+                        }, 10000)
+                        return true
                     }
 
                     if (!confirm(`New version is available! 🤯 \nLatest version: ${resp.latest} \nCurrent version: ${resp.current} \nUpdate can take up to 10 minutes. \nContinue? 👌`))
@@ -247,8 +245,6 @@ $('document').ready(function() {
                                 location.reload()
                                 return
                             }
-                            // shouldn't reach this point
-                            alert('Oops, something went wrong! 😔')
                             location.reload()
                         },
                         error: function (xhr, status, error) {
@@ -258,7 +254,7 @@ $('document').ready(function() {
                         },
                         cache: false,
                         dataType: 'json',
-                        timeout: 1000 * 180
+                        timeout: 1000 * 300
                     })
 
                     desktop.blockUI(true)
@@ -270,8 +266,21 @@ $('document').ready(function() {
                 cache: false,
                 dataType: 'json'
             })
-        })
+        }
 
+        $('#mod-devices').hide()
+        $('#mod-online-pedalboards').hide()
+        $('#mod-cloud-plugins').hide()
+        $('#mod-settings').hide()
+        $('#mod-status').hide()
+        $('#mod-update').hide()
+        $('#blokas-update').show()
+        $('#blokas-update').statusTooltip()
+        $('#blokas-update').statusTooltip('message', 'Check for Updates', true)
+        $('#blokas-update').click(function () {
+            do_blokas_update()
+        })
+        do_blokas_update(true)
 
         // disable all calls to domain moddevices.com
         $(document).ajaxSend(function (event, xhr, options) {
@@ -293,12 +302,6 @@ $('document').ready(function() {
     if (PREFERENCES['plugins-folded'] == "true") {
         desktop.effectBox.effectBox('toggle')
     }
-
-
-    if (PREFERENCES['show-unstable-plugins'] == "true") {
-        $("#cloud-plugins-unstable").parent().show()
-    }
-
     if (PREFERENCES['show-labs-plugins'] == "true") {
         $("#cloud-plugins-source").parent().show()
     }
@@ -914,8 +917,8 @@ $('document').ready(function() {
     <div id="patchstorage-library" class="mod-hidden mod-init-hidden">
         <div>
             <header>
-                <h1 class="bottom top">PATCHSTORAGE (Alpha)</h1>
-                <button class="status icon mod-bypass" id="patchstorage_update_all">Update All</button>
+                <h1 class="bottom top">PATCHSTORAGE (Beta)</h1>
+                <button class="status icon mod-bypass" id="patchstorage_update_all">Refresh</button>
             </header>
 
             <div class="filter clearfix">
@@ -929,8 +932,15 @@ $('document').ready(function() {
                     <label for="patchstorage-installed">INSTALLED</label>
                 </div>
                 <div class="control-group">
-                    <input type="checkbox" name="not-available" id="patchstorage-not-available" />
-                    <label for="patchstorage-not-available">OTHER PLUGINS</label>
+                    <input type="checkbox" name="outdated" id="patchstorage-outdated"/>
+                    <label for="patchstorage-outdated">OUTDATED</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" name="other" id="patchstorage-other" />
+                    <label for="patchstorage-other">LOCAL PLUGINS</label>
+                </div>
+                <div class="">
+                    <input class="form-control" placeholder="Filter by keyword" type="search" autocomplete="off" />
                 </div>
                 <ul class="categories list list-unstyled" style="margin-bottom: 0px;">
                     <li id="patchstorage-tab-All">All</li>
@@ -950,9 +960,6 @@ $('document').ready(function() {
                     <!-- <li id="patchstorage-tab-MaxGen">Max&nbsp;gen~</li> -->
                     <!-- <li id="patchstorage-tab-Camomile">Camomile</li> -->
                 </ul>
-                <div class="form-group mod-hidden">
-                    <input class="form-control" placeholder="Filter by keyword(s)" type="search" autocomplete="off" />
-                </div>
             </div>
 
             <div class="patchstorage-plugins clearfix js-patchstorage">

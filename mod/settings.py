@@ -42,6 +42,7 @@ else:
     IMAGE_VERSION = None
 
 DATA_DIR = os.environ.get('MOD_DATA_DIR', os.path.expanduser('~/data'))
+PRESETS_DIR = os.environ.get('MOD_PRESETS_DIR', os.path.expanduser('~/.lv2'))
 CACHE_DIR = os.path.join(DATA_DIR, '.cache')
 USER_FILES_DIR = os.environ.get('MOD_USER_FILES_DIR', '/data/user-files')
 KEYS_PATH = os.environ.get('MOD_KEYS_PATH', join(DATA_DIR, 'keys'))
@@ -62,13 +63,9 @@ os.environ['MOD_KEYS_PATH'] = KEYS_PATH
 DOWNLOAD_TMP_DIR = os.environ.get('MOD_DOWNLOAD_TMP_DIR', '/tmp/mod-ui')
 PEDALBOARD_TMP_DIR = os.environ.get('MOD_PEDALBOARD_TMP_DIR', join(DATA_DIR, 'pedalboard-tmp-data'))
 
-
-LV2_PLUGIN_DIR = os.path.expanduser("~/.lv2/")
-LV2_PEDALBOARDS_DIR = os.environ.get('MOD_USER_PEDALBOARDS_DIR', os.path.expanduser("~/.pedalboards/"))
-LV2_FACTORY_PEDALBOARDS_DIR = os.environ.get('MOD_FACTORY_PEDALBOARDS_DIR', "/usr/share/mod/pedalboards/")
-
 LV2_PLUGIN_DIR = os.environ.get('LV2_PLUGIN_DIR', os.path.expanduser("~/.lv2/"))
 LV2_PEDALBOARDS_DIR = os.environ.get('LV2_PEDALBOARDS_DIR', os.path.expanduser("~/.pedalboards/"))
+LV2_FACTORY_PEDALBOARDS_DIR = os.environ.get('MOD_FACTORY_PEDALBOARDS_DIR', "/usr/share/mod/pedalboards/")
 
 HMI_BAUD_RATE = os.environ.get('MOD_HMI_BAUD_RATE', 10000000)
 HMI_SERIAL_PORT = os.environ.get('MOD_HMI_SERIAL_PORT', "/dev/ttyUSB0")
@@ -132,8 +129,9 @@ USING_256_FRAMES_FILE='/data/using-256-frames'
 
 # Blokas Flags
 PATCHSTORAGE_ENABLED=bool(int(os.environ.get('PATCHSTORAGE_ENABLED', True)))
-PATCHSTORAGE_API_URL=os.environ.get('PATCHSTORAGE_API_URL', 'https://patchstorage.com/api/beta/patches')
-PATCHSTORAGE_PLATFORM_ID=os.environ.get('PATCHSTORAGE_PLATFORM_ID', '8046')
+PATCHSTORAGE_API_URL=os.environ.get('PATCHSTORAGE_API_URL', 'http://localhost/api/beta/patches')
+PATCHSTORAGE_PLATFORM_ID=os.environ.get('PATCHSTORAGE_PLATFORM_ID', 5027)
+PATCHSTORAGE_TARGET_ID=os.environ.get('PATCHSTORAGE_TARGET_ID', 5037)
 BLOKAS_ENABLED=bool(int(os.environ.get('BLOKAS_ENABLED', True)))
 BLOKAS_APT_PACKAGE=os.environ.get('BLOKAS_APT_PACKAGE', 'modep-mod-ui')
 BLOKAS_UPDATE_CHECK_URL=os.environ.get('BLOKAS_UPDATE_CHECK_URL', 'https://blokas.io/modep/version/v1/')

@@ -25,7 +25,10 @@ import sys
 import time
 import tarfile
 
-sys.modules['tornado'] = __import__('tornado4')
+try:
+    sys.modules['tornado'] = __import__('tornado4')
+except ModuleNotFoundError:
+    pass
 
 from base64 import b64decode, b64encode
 from datetime import timedelta
@@ -51,7 +54,7 @@ from mod.settings import (APP, LOG, DEV_API,
                           DEFAULT_PEDALBOARD, DEFAULT_SNAPSHOT_NAME, DATA_DIR, KEYS_PATH, USER_FILES_DIR,
                           FAVORITES_JSON_FILE, PREFERENCES_JSON_FILE, USER_ID_JSON_FILE,
                           DEV_HOST, UNTITLED_PEDALBOARD_NAME, MODEL_CPU, MODEL_TYPE, PEDALBOARDS_LABS_HTTP_ADDRESS,
-                          PATCHSTORAGE_ENABLED, PATCHSTORAGE_API_URL, PATCHSTORAGE_PLATFORM_ID, BLOKAS_ENABLED,
+                          PATCHSTORAGE_ENABLED, PATCHSTORAGE_API_URL, PATCHSTORAGE_PLATFORM_ID, PATCHSTORAGE_TARGET_ID, BLOKAS_ENABLED,
                           BLOKAS_APT_PACKAGE, BLOKAS_UPDATE_CHECK_URL)
 
 from mod import (
@@ -202,7 +205,7 @@ def install_package(filename, options, callback):
 
         if psid is not None:
             psversion = options.get("psversion", "0.0")
-            config = "ID={}\nVERSION={}\n".format(psid, psversion)
+            config = {"id": int(psid), "revision": str(psversion)}
 
             try:
                 with tarfile.open(filename) as f:
@@ -211,9 +214,10 @@ def install_package(filename, options, callback):
                 logging.warning(f'tar file read error: {str(e)}')
 
             for name in bundlenames:
-                if not any(s in name for s in ["/", "\\"]) and os.path.isdir(os.path.join(DOWNLOAD_TMP_DIR, name)):            
-                    with open(os.path.join(DOWNLOAD_TMP_DIR, name, "patchstorage"), 'w') as f:
-                        f.write(config)
+                if not any(s in name for s in ["/", "\\"]) and os.path.isdir(os.path.join(DOWNLOAD_TMP_DIR, name)):
+                    json_path = os.path.join(DOWNLOAD_TMP_DIR, name, "patchstorage.json")
+                    with open(json_path, 'w', encoding='utf-8') as file:
+                        json.dump(config, file, ensure_ascii=False, indent=4)
 
         os.remove(filename)
         install_bundles_in_tmp_dir(options, callback)
@@ -770,19 +774,32 @@ class APTCheck(JsonRequestHandler):
         })
 
 class APTUpgrade(JsonRequestHandler):
+    def is_update_running():
+        proc = subprocess.Popen(['systemctl', 'is-active', 'modep-update.service'], stdout=subprocess.PIPE, encoding='utf8')
+        line = proc.stdout.readline().strip()
+        return line in ['active', 'activating']
+
+    def is_update_failed():
+        proc = subprocess.run(['systemctl', '-q', 'is-failed', 'modep-update.service'])
+        return proc.returncode == 0
+
     def get(self):
         error = False
 
         try:
-            out = subprocess.run(['sleep', '10'], stdout=subprocess.DEVNULL)
-            error = any([bool(out.returncode), error])
+            open('/tmp/modep-update', 'a').close()
+            time.sleep(3)
+            while APTUpgrade.is_update_running():
+                time.sleep(1)
 
-            out = subprocess.run(['true'], stdout=subprocess.DEVNULL)
-            error = any([bool(out.returncode), error])
+            error = APTUpgrade.is_update_failed()
+            logging.info(error)
         
         except Exception as err:
             logging.error(err)
             error = True
+
+        logging.info("Update complete, error: {0}".format(error))
 
         self.write({
             "error": error
@@ -819,7 +836,7 @@ class EffectInstaller(SimpleFileReceiver):
     @gen.engine
     def process_file(self, basename, headers, callback=lambda:None):
         options = {}
-        
+
         # TODO: remove this, once a better solution is found
         psids = self.request.headers.get_list("Patchstorage-Item")
         if psids and len(psids) > 0:
@@ -833,7 +850,6 @@ class EffectInstaller(SimpleFileReceiver):
             reset_get_all_pedalboards_cache(kPedalboardInfoBoth)
             self.result = resp
             callback()
-        
         install_package(os.path.join(DOWNLOAD_TMP_DIR, basename), options, on_finish)
 
 class EffectBulk(JsonRequestHandler):
@@ -1877,6 +1893,7 @@ class TemplateHandler(TimelessRequestHandler):
             'patchstorage_enabled': 'true' if PATCHSTORAGE_ENABLED else 'false',
             'patchstorage_api_url': PATCHSTORAGE_API_URL,
             'patchstorage_platform_id': PATCHSTORAGE_PLATFORM_ID,
+            'patchstorage_target_id': PATCHSTORAGE_TARGET_ID,
             'blokas_enabled': 'true' if BLOKAS_ENABLED else 'false'
         }
         return context
@@ -2276,12 +2293,12 @@ class FilesList(JsonRequestHandler):
 
         elif filetype == "sfz":
             return ("SFZ Instruments", (".sfz",))
+        
+        elif filetype == "tapf":
+            return ("Amplifier Profiles", (".tapf",))
 
         elif filetype == "aidadspmodel":
-            return ("Aida DSP Models", (".aidax",".json",))
-
-        elif filetype == "nammodel":
-            return ("NAM Models", (".nam",))
+            return ("Aida DSP Models", (".json",))
 
         else:
             return (None, ())
