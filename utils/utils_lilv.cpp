@@ -1800,7 +1800,7 @@ const PluginInfo_Mini* _get_plugin_info_mini(LilvWorld* const w,
     }
 
     const char* const bundleuri = lilv_node_as_uri(lilv_plugin_get_bundle_uri(p));
-    patchstorage_read_info(&info.psInfo, bundleuri);
+    patchstorage_read_info(&info->psInfo, bundleuri);
 
     // --------------------------------------------------------------------------------------------------------
 
@@ -3829,7 +3829,7 @@ static void _fill_plugin_info_mini_from_full(const PluginInfo& info2, PluginInfo
         info.gui.screenshot = info2.gui.screenshot;
         info.gui.thumbnail  = info2.gui.thumbnail;
 
-        memcpy(&info.psInfo, &info2.psInfo, sizeof(info.psInfo));
+        memcpy(&info->psInfo, &info2.psInfo, sizeof(info->psInfo));
 
         info.valid = true;
     }
